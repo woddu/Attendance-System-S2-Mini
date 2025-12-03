@@ -1,0 +1,328 @@
+#include <utility>
+#include <stdexcept>
+
+// FAILED
+template <typename T, typename E>
+class Result {
+    struct M {
+        bool has_value;
+        union {
+            T value;
+            E error;
+        };
+    };
+    // can not move like this because of union with non-trivial members
+    explicit Result(const M& m) : m(std::move(m)) {}
+
+public:
+    
+    static Result<T, E> create(const T& v) {
+        M m;
+        m.has_value = true;
+        new (&m.value) T(v);
+        return Result<T, E>(m);
+    }
+
+    static Result<T, E> create(T&& v) {
+        M m;
+        m.has_value = true;
+        new (&m.value) T(std::move(v));
+        return Result<T, E>(m);
+    }
+
+    static Result<T, E> create(const E& e) {
+        M m;
+        m.has_value = false;
+        new (&m.error) E(e);
+        return Result<T, E>(m);
+    }
+
+    static Result<T, E> create(E&& e) {
+         M m;
+        m.has_value = false;
+        new (&m.error) E(std::move(e));
+        return Result<T, E>(m);
+    }
+
+    // Destructor
+    ~Result() {
+        if (m.has_value) {
+            m.value.~T();
+        } else {
+            m.error.~E();
+        }
+    }
+
+    // Copy constructor
+    Result(const Result& other) {
+        m.has_value = other.has_value();
+        if (other.has_value()) {
+            new (&m.value) T(other.value());
+        } else {
+            new (&m.error) E(other.error());
+        }
+    }
+
+    // Move constructor
+    Result(Result&& other) {
+        m.has_value = other.has_value();
+        if (other.has_value()) {
+            new (&m.value) T(other.value());
+        } else {
+            new (&m.error) E(other.error());
+        }
+    }
+
+    // Assignment operators (simplified)
+    Result& operator=(const Result& other) {
+        if (this != &other) {
+            this->~Result();
+            new (this) Result(other);
+        }
+        return *this;
+    }
+
+    Result& operator=(Result&& other) {
+        if (this != &other) {
+            this->~Result();
+            new (this) Result(std::move(other));
+        }
+        return *this;
+    }
+
+    // Accessors
+    bool has_value() const { return m.has_value; }
+
+    T& value() {
+        if (!m.has_value) throw std::logic_error("No value present");
+        return m.value;
+    }
+
+    const T& value() const {
+        if (!m.has_value) throw std::logic_error("No value present");
+        return m.value;
+    }
+
+    E& error() {
+        if (m.has_value) throw std::logic_error("No error present");
+        return m.error;
+    }
+
+    const E& error() const {
+        if (m.has_value) throw std::logic_error("No error present");
+        return m.error;
+    }
+};
+
+#include <utility>
+
+template <typename T, typename E>
+class Result {
+    struct M {
+        bool has_value;
+        union {
+            T value;
+            E error;
+        };
+
+        // Default constructor
+        M() : has_value(false), error() {}
+
+        // Construct with value
+        M(const T& v) : has_value(true) {
+            new (&value) T(v);
+        }
+        M(T&& v) : has_value(true) {
+            new (&value) T(std::move(v));
+        }
+
+        // Construct with error
+        M(const E& e) : has_value(false) {
+            new (&error) E(e);
+        }
+        M(E&& e) : has_value(false) {
+            new (&error) E(std::move(e));
+        }
+
+        // Copy constructor
+        M(const M& other) : has_value(other.has_value) {
+            if (has_value)
+                new (&value) T(other.value);
+            else
+                new (&error) E(other.error);
+        }
+
+        // Move constructor
+        M(M&& other) noexcept : has_value(other.has_value) {
+            if (has_value)
+                new (&value) T(std::move(other.value));
+            else
+                new (&error) E(std::move(other.error));
+        }
+
+        // Copy assignment
+        M& operator=(const M& other) {
+            if (this != &other) {
+                this->~M(); // destroy current
+                has_value = other.has_value;
+                if (has_value)
+                    new (&value) T(other.value);
+                else
+                    new (&error) E(other.error);
+            }
+            return *this;
+        }
+
+        // Move assignment
+        M& operator=(M&& other) noexcept {
+            if (this != &other) {
+                this->~M(); // destroy current
+                has_value = other.has_value;
+                if (has_value)
+                    new (&value) T(std::move(other.value));
+                else
+                    new (&error) E(std::move(other.error));
+            }
+            return *this;
+        }
+
+        // Destructor
+        ~M() {
+            if (has_value)
+                value.~T();
+            else
+                error.~E();
+        }
+    };
+
+    M m;
+
+    explicit Result(const M& m) : m(m) {}
+    explicit Result(M&& m) : m(std::move(m)) {}
+
+public:
+    // Static factories
+    static Result<T, E> create(const T& v) { return Result<T, E>(M(v)); }
+    static Result<T, E> create(T&& v) { return Result<T, E>(M(std::move(v))); }
+    static Result<T, E> create(const E& e) { return Result<T, E>(M(e)); }
+    static Result<T, E> create(E&& e) { return Result<T, E>(M(std::move(e))); }
+
+    // Accessors
+    bool hasValue() const { return m.has_value; }
+    const T& value() const { return m.value; }
+    const E& error() const { return m.error; }
+};
+
+#pragma once
+#include <utility>
+#include <stdexcept>
+#include "Errors.hpp"
+
+template <typename E>
+struct ResultError {
+    E error;
+    explicit ResultError(const E& e) : error(e) {}
+    explicit ResultError(E&& e) : error(std::move(e)) {}
+};
+
+template <typename T, typename E>
+class Result {
+    bool has_value_;
+    union {
+        T value_;
+        E error_;
+    };    
+
+public:
+    // Constructors for value
+    Result(const T& v) : has_value_(true) {
+        new (&value_) T(v);
+    }
+    Result(const T&& v) : has_value_(true) {
+        new (&value_) T(std::move(v));
+    }
+    
+     // Error constructors via Unexpected
+    Result(const ResultError<E>& re) : has_value_(false) {
+        new (&error_) E(re.error);
+    }
+    Result(ResultError<E>&& re) : has_value_(false) {
+        new (&error_) E(std::move(re.error));
+    }
+
+    // Destructor
+    ~Result() {
+        if (has_value_) {
+            value_.~T();
+        } else {
+            error_.~E();
+        }
+    }
+
+    // Copy constructor
+    Result(const Result& other) : has_value_(other.has_value_) {
+        if (has_value_) {
+            new (&value_) T(other.value_);
+        } else {
+            new (&error_) E(other.error_);
+        }
+    }
+
+    // Move constructor
+    Result(Result&& other) : has_value_(other.has_value_) {
+        if (has_value_) {
+            new (&value_) T(std::move(other.value_));
+        } else {
+            new (&error_) E(std::move(other.error_));
+        }
+    }
+
+    // Assignment operators
+    Result& operator=(const Result& other) {
+        if (this != &other) {
+            this->~Result();
+            new (this) Result(other);
+        }
+        return *this;
+    }
+
+    Result& operator=(Result&& other) {
+        if (this != &other) {
+            this->~Result();
+            new (this) Result(std::move(other));
+        }
+        return *this;
+    }
+    
+    operator bool() const {
+        return has_value_;
+    }
+
+    // Accessors
+    bool has_value() const { return has_value_; }
+
+    T& value() {
+        if (!has_value_) throw std::logic_error("No value present");
+        return value_;
+    }
+
+    const T& value() const {
+        if (!has_value_) throw std::logic_error("No value present");
+        return value_;
+    }
+
+    E& error() {
+        if (has_value_) throw std::logic_error("No error present");
+        return error_;
+    }
+
+    const E& error() const {
+        if (has_value_) throw std::logic_error("No error present");
+        return error_;
+    }
+};
+
+template <typename E>
+ResultError<E> make_result_error(E&& e) {
+    return ResultError<E>(std::forward<E>(e));
+}
