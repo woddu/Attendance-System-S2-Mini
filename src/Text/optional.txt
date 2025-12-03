@@ -1,0 +1,95 @@
+
+template <typename T>
+class Option {
+  struct M {
+    T value;
+    bool has_value;
+  } m;
+
+  explicit Option(const M& m) : m(m) {}
+  
+  explicit Option(M&& m) : m(std::move(m)) {}
+
+  public: 
+
+    Option(const Option &other) {
+      m.has_value = other.has_value();
+      if (other.has_value()) {
+        new (&m.value) T(other.value());
+      } else {
+        new (&m.value) T{};
+      }
+    }
+
+    Option& operator=(const Option&) {
+      return *this;
+    }
+
+    static Option createNull() {
+      return Option(M{
+        T{},
+        false
+      });
+    }
+
+    static Option create(const T &value) {
+      return Option(M{
+        value,
+        true
+      });
+    }    
+
+    static Option create(const T &&value) {
+      return Option(M{
+        std::move(value),
+        true
+      });
+    }    
+
+    const operator bool() const {
+      return m.has_value;
+    }
+
+    bool has_value() const { return m.has_value; }
+
+    const T value() const { return m.value; }
+};
+
+template <typename T>
+class Option {
+    bool has_value;
+    alignas(T) unsigned char storage[sizeof(T)];
+
+public:
+    Option() : has_value(false) {}
+
+    Option(const Option& other) : has_value(other.has_value) {
+        if (has_value) {
+            new (storage) T(*other.ptr());
+        }
+    }
+
+    Option& operator=(const Option& other) {
+        if (this != &other) {
+            reset();
+            if (other.has_value) {
+                new (storage) T(*other.ptr());
+                has_value = true;
+            }
+        }
+        return *this;
+    }
+
+    ~Option() { reset(); }
+
+    void reset() {
+        if (has_value) {
+            ptr()->~T();
+            has_value = false;
+        }
+    }
+
+    T* ptr() { return reinterpret_cast<T*>(storage); }
+    const T* ptr() const { return reinterpret_cast<const T*>(storage); }
+};
+
